@@ -11,7 +11,7 @@ const CATEGORY_ID = '1477177022517350451';
 const TEXT_CATEGORY_ID = '1477290108054147072';
 const LOG_CHANNEL_ID = '1477304663144402944'; // 通知用チャンネルID
 const COUNTER_FILE = './gameCounter.json';
-const TEAM_SIZE = 1; // 安定のため4人設定
+const TEAM_SIZE = 4; // 安定のため4人設定
 const TOTAL_REQUIRED = TEAM_SIZE * 2;
 
 // --- [2] 初期化 ---
