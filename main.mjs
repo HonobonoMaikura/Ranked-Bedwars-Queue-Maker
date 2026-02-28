@@ -29,10 +29,10 @@ client.on('messageCreate', (message) => {
     // Bot自身のメッセージは無視
     if (message.author.bot) return;
     
-    // 「ping」メッセージに反応
-    if (message.content.toLowerCase() === 'ping') {
-        message.reply('🏓 pong!');
-        console.log(`📝 ${message.author.tag} が ping コマンドを使用`);
+    // 「checkbot」メッセージに反応
+    if (message.content.toLowerCase() === 'checkbot') {
+        message.reply('Bot Alive.');
+        console.log(`📝 ${message.author.tag} が checkbot コマンドを使用`);
     }
 });
 
