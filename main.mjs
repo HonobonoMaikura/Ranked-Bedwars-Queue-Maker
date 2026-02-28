@@ -78,3 +78,13 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`🌐 Web サーバーがポート ${port} で起動しました`);
 });
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+    // 誰かがチャンネルに入った瞬間を検知
+    if (newState.channelId) {
+        console.log(`${newState.member.displayName} が ${newState.channel.name} に入りました`);
+    }
+});
