@@ -31,7 +31,7 @@ client.on('messageCreate', (message) => {
     
     // 「checkbot」メッセージに反応
     if (message.content.toLowerCase() === 'checkbot') {
-        message.reply('Bot Alive.');
+        message.reply('🤖 Bot is running!');
         console.log(`📝 ${message.author.tag} が checkbot コマンドを使用`);
     }
 });
