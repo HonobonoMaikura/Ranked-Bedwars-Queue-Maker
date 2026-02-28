@@ -89,3 +89,34 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} に入りました`)
     }
 });
+
+client.on("voiceStateUpdate",  (oldState, newState) => {
+    if(newState && oldState){
+
+        //newState関係
+        console.log(`NEW:userid   : ${newState.id}`);       //ユーザID
+        console.log(`NEW:channelid: ${newState.channelID}`);//チャンネルID、nullならdisconnect
+        console.log(`NEW:guildid  : ${newState.guild.id}`); //ギルドID
+
+        //oldState関係
+        console.log(`OLD:userid   : ${oldState.id}`);       //ユーザID
+        console.log(`OLD:channelid: ${oldState.channelID}`);//チャンネルID、nullならconnect
+        console.log(`OLD:guildid  : ${oldState.guild.id}`); //ギルドID
+        
+        if(oldState.channelID===newState.channelID){
+            //ここはミュートなどの動作を行ったときに発火する場所
+            concole.log(`other`);
+            client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} で何かしらの動作をしました。`)
+        }
+        if(oldState.channelID===null && newState.channelID != null){
+            //ここはconnectしたときに発火する場所
+            concole.log(`connect`);
+            client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} に入りました。`)
+        }
+        if(oldState.channelID !=null && newState.channelID === null){
+            //ここはdisconnectしたときに発火する場所
+            console.log(`disconnect`);
+            client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} から退出しました。`)
+        }
+    }
+});
