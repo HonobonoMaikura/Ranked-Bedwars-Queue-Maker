@@ -1,113 +1,263 @@
-// main.mjs - Discord Botのメインプログラム
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, GatewayIntentBits, ChannelType } from 'discord.js';
 
-// 必要なライブラリを読み込み
-import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
+
 import express from 'express';
 
-// .envファイルから環境変数を読み込み
+import fs from 'fs';
+
+
+
 dotenv.config();
 
-// Discord Botクライアントを作成
+
+
+// --- [1] 設定項目 ---
+
+const QUEUE_CHANNEL_ID = '1477177057212366929';
+
+const CATEGORY_ID = '1477177022517350451'; // ボイス作成用カテゴリ
+
+const TEXT_CATEGORY_ID = '1477290108054147072'; // テキスト作成用カテゴリ（必要なら変更）
+
+const COUNTER_FILE = './gameCounter.json';
+
+const TEAM_SIZE = 1;
+
+const TOTAL_REQUIRED = TEAM_SIZE * 2;
+
+
+
+// --- [2] 初期化 ---
+
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,           // サーバー情報取得
-        GatewayIntentBits.GuildMessages,    // メッセージ取得
-        GatewayIntentBits.MessageContent,   // メッセージ内容取得
-        GatewayIntentBits.GuildMembers,     // メンバー情報取得
-    ],
+
+    intents: [
+
+        GatewayIntentBits.Guilds,
+
+        GatewayIntentBits.GuildMessages,
+
+        GatewayIntentBits.MessageContent,
+
+        GatewayIntentBits.GuildMembers,
+
+        GatewayIntentBits.GuildVoiceStates,
+
+    ],
+
 });
 
-// Botが起動完了したときの処理
-client.once('ready', () => {
-    console.log(`🎉 ${client.user.tag} が正常に起動しました！`);
-    console.log(`📊 ${client.guilds.cache.size} つのサーバーに参加中`);
+
+
+let gameCounter = fs.existsSync(COUNTER_FILE)
+
+    ? JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')).nextId
+
+    : 1;
+
+
+
+// --- [3] イベントリスナー ---
+
+client.once('ready', () => console.log(`🎉 ${client.user.tag} が起動しました！`));
+
+
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+
+    if (newState.channelId !== QUEUE_CHANNEL_ID || oldState.channelId === newState.channelId) return;
+
+
+
+    const channel = newState.channel;
+
+    if (channel && channel.members.size >= TOTAL_REQUIRED) {
+
+        console.log(`✨ マッチング開始: ${TOTAL_REQUIRED}人集まりました`);
+
+       
+
+        const gameId = String(gameCounter).padStart(3, '0');
+
+        gameCounter = (gameCounter >= 999) ? 1 : gameCounter + 1;
+
+        fs.writeFileSync(COUNTER_FILE, JSON.stringify({ nextId: gameCounter }));
+
+
+
+        // チャンネル作成と通知
+
+        const [v1, v2] = await createVoiceChannels(newState.guild, gameId);
+
+        const textChannel = await createTextChannel(newState.guild, gameId);
+
+       
+
+        // チーム編成して移動・通知
+
+        const teams = await moveMembers(channel.members, v1, v2);
+
+        await notifyTeamSetup(textChannel, gameId, teams);
+
+    }
+
 });
 
-// メッセージが送信されたときの処理
-client.on('messageCreate', (message) => {
-    // Bot自身のメッセージは無視
-    if (message.author.bot) return;
-    
-    // 「checkbot」メッセージに反応
-    if (message.content.toLowerCase() === 'checkbot') {
-        message.reply('🤖 Bot is running!');
-        console.log(`📝 ${message.author.tag} が checkbot コマンドを使用`);
-    }
+
+
+client.on('interactionCreate', async (interaction) => {
+
+    if (!interaction.isButton()) return;
+
+    if (!interaction.customId.startsWith('delete_game_')) return;
+
+
+
+    // ボタンIDから gameId を抽出
+
+    const gameId = interaction.customId.replace('delete_game_', '');
+
+    const guild = interaction.guild;
+
+
+
+    // 同じ gameId を含む名前のチャンネルをすべて検索して削除
+
+    const channelsToDelete = guild.channels.cache.filter(c =>
+
+        c.name.includes(`Game#${gameId}`) || c.name.includes(`game-${gameId}`)
+
+    );
+
+
+
+    await interaction.reply({ content: `🧹 ゲーム #${gameId} のチャンネルを削除中...`, ephemeral: true });
+
+
+
+    for (const [id, channel] of channelsToDelete) {
+
+        await channel.delete().catch(console.error);
+
+    }
+
+   
+
+    console.log(`✅ Game#${gameId} のチャンネルを削除しました`);
+
 });
 
-// エラーハンドリング
-client.on('error', (error) => {
-    console.error('❌ Discord クライアントエラー:', error);
-});
 
-// プロセス終了時の処理
-process.on('SIGINT', () => {
-    console.log('🛑 Botを終了しています...');
-    client.destroy();
-    process.exit(0);
-});
 
-// Discord にログイン
-if (!process.env.DISCORD_TOKEN) {
-    console.error('❌ DISCORD_TOKEN が .env ファイルに設定されていません！');
-    process.exit(1);
+// --- [4] 処理関数 ---
+
+
+
+async function createVoiceChannels(guild, gameId) {
+
+    const t1 = await guild.channels.create({ name: `Game#${gameId} Team 1`, type: ChannelType.GuildVoice, parent: CATEGORY_ID });
+
+    const t2 = await guild.channels.create({ name: `Game#${gameId} Team 2`, type: ChannelType.GuildVoice, parent: CATEGORY_ID });
+
+    return [t1, t2];
+
 }
 
-console.log('🔄 Discord に接続中...');
-client.login(process.env.DISCORD_TOKEN)
-    .catch(error => {
-        console.error('❌ ログインに失敗しました:', error);
-        process.exit(1);
-    });
 
-// Express Webサーバーの設定（Render用）
+
+async function createTextChannel(guild, gameId) {
+
+    return await guild.channels.create({
+
+        name: `game-${gameId}`,
+
+        type: ChannelType.GuildText,
+
+        parent: TEXT_CATEGORY_ID,
+
+    });
+
+}
+
+
+
+async function moveMembers(members, v1, v2) {
+
+    const shuffled = Array.from(members.values()).sort(() => 0.5 - Math.random());
+
+    const team1 = shuffled.slice(0, TEAM_SIZE);
+
+    const team2 = shuffled.slice(TEAM_SIZE, TEAM_SIZE * 2);
+
+   
+
+    for (const m of team1) await m.voice.setChannel(v1).catch(console.error);
+
+    for (const m of team2) await m.voice.setChannel(v2).catch(console.error);
+
+   
+
+    return { team1, team2 };
+
+}
+
+
+
+async function notifyTeamSetup(channel, gameId, teams) {
+
+    // メンションにするための修正（m.toString() は <@ID> に変換されます）
+
+    const format = (list) => list.map(m => m.toString()).join('\n');
+
+   
+
+    // ボタンの作成
+
+    const row = new ActionRowBuilder().addComponents(
+
+        new ButtonBuilder()
+
+            .setCustomId(`delete_game_${gameId}`) // IDにIDを含める
+
+            .setLabel('ゲームを終了')
+
+            .setStyle(ButtonStyle.Danger)
+
+    );
+
+
+
+    await channel.send({
+
+        embeds: [{
+
+            title: `🎮 Game#${gameId} チーム編成`,
+
+            color: 0x0099ff,
+
+            fields: [
+
+                { name: 'Team 1 (ボイス1)', value: format(teams.team1), inline: true },
+
+                { name: 'Team 2 (ボイス2)', value: format(teams.team2), inline: true }
+
+            ],
+
+        }],
+
+        components: [row] // ボタンを追加
+
+    });
+
+}
+
+
+
+// --- [5] 起動 ---
+
+client.login(process.env.DISCORD_TOKEN);
+
 const app = express();
-const port = process.env.PORT || 3000;
 
-// ヘルスチェック用エンドポイント
-app.get('/', (req, res) => {
-    res.json({
-        status: 'Bot is running! 🤖',
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString()
-    });
-});
-
-// サーバー起動
-app.listen(port, () => {
-    console.log(`🌐 Web サーバーがポート ${port} で起動しました`);
-});
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-client.on("voiceStateUpdate",  (oldState, newState) => {
-    if(newState && oldState){
-
-        //newState関係
-        console.log(`NEW:userid   : ${newState.id}`);       //ユーザID
-        console.log(`NEW:channelid: ${newState.channelID}`);//チャンネルID、nullならdisconnect
-        console.log(`NEW:guildid  : ${newState.guild.id}`); //ギルドID
-
-        //oldState関係
-        console.log(`OLD:userid   : ${oldState.id}`);       //ユーザID
-        console.log(`OLD:channelid: ${oldState.channelID}`);//チャンネルID、nullならconnect
-        console.log(`OLD:guildid  : ${oldState.guild.id}`); //ギルドID
-        
-        if(oldState.channelID===newState.channelID){
-            //ここはミュートなどの動作を行ったときに発火する場所
-            concole.log(`other`);
-            client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} で何かしらの動作をしました。`)
-        }
-        if(oldState.channelID===null && newState.channelID != null){
-            //ここはconnectしたときに発火する場所
-            concole.log(`connect`);
-            client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} に入りました。`)
-        }
-        if(oldState.channelID !=null && newState.channelID === null){
-            //ここはdisconnectしたときに発火する場所
-            console.log(`disconnect`);
-            client.channels.resolve('1477256919352606841')?.send(`${oldState.member.displayName} が ${oldState.channel.name} から退出しました。`)
-        }
-    }
-});
+app.listen(process.env.PORT || 3000);
