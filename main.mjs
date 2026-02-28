@@ -81,15 +81,6 @@ app.listen(port, () => {
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-
-client.on('voiceStateUpdate', (oldState, newState) => {
-    // 誰かがチャンネルに入った瞬間を検知
-    if (newState.channelId) {
-        console.log(`${newState.member.displayName} が ${newState.channel.name} に入りました`);
-        client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} に入りました`)
-    }
-});
-
 client.on("voiceStateUpdate",  (oldState, newState) => {
     if(newState && oldState){
 
