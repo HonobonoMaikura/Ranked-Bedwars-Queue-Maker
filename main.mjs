@@ -116,7 +116,7 @@ client.on("voiceStateUpdate",  (oldState, newState) => {
         if(oldState.channelID !=null && newState.channelID === null){
             //ここはdisconnectしたときに発火する場所
             console.log(`disconnect`);
-            client.channels.resolve('1477256919352606841')?.send(`${newState.member.displayName} が ${newState.channel.name} から退出しました。`)
+            client.channels.resolve('1477256919352606841')?.send(`${oldState.member.displayName} が ${oldState.channel.name} から退出しました。`)
         }
     }
 });
