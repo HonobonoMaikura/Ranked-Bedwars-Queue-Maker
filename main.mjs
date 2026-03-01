@@ -74,7 +74,7 @@ client.on('interactionCreate', async (interaction) => {
     // 通知チャンネルへメッセージ送信
     const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
     if (logChannel) {
-        await logChannel.send(`Game#${gameId} は終了しました。`).catch(console.error);
+        await logChannel.send(`Game#${gameId}[4v4] は終了しました。`).catch(console.error);
     }
 });
 
