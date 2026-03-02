@@ -35,7 +35,7 @@ client.once('ready', () => console.log(`🎉 ${client.user.tag} が起動しま�
 // マッチング処理
 client.on('voiceStateUpdate', async (oldState, newState) => {
     if (newState.channelId !== QUEUE_CHANNEL_ID || oldState.channelId === newState.channelId) return;
-
+    console.log(`🙋 誰かがQueueに参加しました`)
     const channel = newState.channel;
     if (channel && channel.members.size >= TOTAL_REQUIRED) {
         console.log(`✨ マッチング開始: ${TOTAL_REQUIRED}人集まりました`);
