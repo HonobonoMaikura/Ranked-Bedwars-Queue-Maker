@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, GatewayIntentBits, ChannelType } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, GatewayIntentBits, ChannelType, PermissionsBitField } from 'discord.js';
 import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs';
@@ -35,8 +35,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         fs.writeFileSync(COUNTER_FILE, JSON.stringify({ nextId: gameCounter }));
 
         const [v1, v2] = await createVoiceChannels(newState.guild, gameId);
-        const textChannel = await createTextChannel(newState.guild, gameId);
         const teams = await moveMembers(channel.members, v1, v2);
+
+        // 参加者全員の配列を作成
+        const allParticipants = [...teams.team1, ...teams.team2];
+
+        // 参加者を渡してテキストチャンネル作成
+        const textChannel = await createTextChannel(newState.guild, gameId, allParticipants);
         
         // チーム情報を保存
         gameData.set(gameId, teams);
@@ -59,12 +64,11 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: `Game#${gameId} の勝者はどちらですか？`, components: [row], ephemeral: true });
     }
 
-    // 勝敗選択ボタンが押されたとき
+    // 勝敗選択ボタン
     if (interaction.customId.startsWith('win_team')) {
         const [_, winner, gameId] = interaction.customId.split('_');
         
-        // 【重要】チャンネル削除前に、まずインタラクションに応答（deferUpdate）する
-        // これにより「Unknown Message」エラーを回避できます
+        // チャンネル削除前に応答
         await interaction.deferUpdate();
 
         const guild = interaction.guild;
@@ -96,7 +100,7 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
         
-        gameData.delete(gameId); // メモリ解放
+        gameData.delete(gameId);
         console.log(`✅ Game#${gameId} の処理が完了しました`);
     }
 });
@@ -108,8 +112,28 @@ async function createVoiceChannels(guild, gameId) {
     return [t1, t2];
 }
 
-async function createTextChannel(guild, gameId) {
-    return await guild.channels.create({ name: `game-${gameId}`, type: ChannelType.GuildText, parent: TEXT_CATEGORY_ID });
+async function createTextChannel(guild, gameId, members) {
+    const permissionOverwrites = [
+        {
+            id: guild.id,
+            deny: [PermissionsBitField.Flags.ViewChannel],
+        },
+        ...members.map(m => ({
+            id: m.id,
+            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+        })),
+        {
+            id: guild.client.user.id,
+            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ManageChannels],
+        }
+    ];
+
+    return await guild.channels.create({
+        name: `game-${gameId}`,
+        type: ChannelType.GuildText,
+        parent: TEXT_CATEGORY_ID,
+        permissionOverwrites: permissionOverwrites,
+    });
 }
 
 async function moveMembers(members, v1, v2) {
