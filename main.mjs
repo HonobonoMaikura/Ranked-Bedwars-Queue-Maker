@@ -11,10 +11,9 @@ const CATEGORY_ID = '1477177022517350451';
 const TEXT_CATEGORY_ID = '1477290108054147072';
 const LOG_CHANNEL_ID = '1477304663144402944';
 const COUNTER_FILE = './gameCounter.json';
-const TEAM_SIZE = 4;
+const TEAM_SIZE = 4; // テスト時は1
 const TOTAL_REQUIRED = TEAM_SIZE * 2;
 
-// チーム情報を一時保存するメモリ
 const gameData = new Map();
 
 const client = new Client({
@@ -36,16 +35,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
         const [v1, v2] = await createVoiceChannels(newState.guild, gameId);
         const teams = await moveMembers(channel.members, v1, v2);
-
-        // 参加者全員の配列を作成
         const allParticipants = [...teams.team1, ...teams.team2];
-
-        // 参加者を渡してテキストチャンネル作成
         const textChannel = await createTextChannel(newState.guild, gameId, allParticipants);
         
-        // チーム情報を保存
         gameData.set(gameId, teams);
-        
         await notifyTeamSetup(textChannel, gameId, teams);
     }
 });
@@ -64,44 +57,47 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: `Game#${gameId} の勝者はどちらですか？`, components: [row], ephemeral: true });
     }
 
-    // 勝敗選択ボタン
+    // 勝敗選択ボタン (修正: ID判定を厳密に)
     if (interaction.customId.startsWith('win_team')) {
-        const [_, winner, gameId] = interaction.customId.split('_');
-        
-        // チャンネル削除前に応答
+        const [_, teamSide, gameId] = interaction.customId.split('_'); // team1 か team2 が入る
         await interaction.deferUpdate();
 
-        const guild = interaction.guild;
         const teams = gameData.get(gameId);
+        const channels = guild.channels.cache.filter(c => c.name.includes(`Game#${gameId}`) || c.name.includes(`game-${gameId}`));
+        for (const [id, ch] of channels) await ch.delete().catch(console.error);
 
-        // チャンネル削除処理
-        const channels = guild.channels.cache.filter(c => 
-            c.name.includes(`Game#${gameId}`) || c.name.includes(`game-${gameId}`)
-        );
-        for (const [id, ch] of channels) {
-            await ch.delete().catch(console.error);
-        }
-
-        // ログ送信
         const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (logChannel && teams) {
             await logChannel.send({
                 embeds: [{
                     title: `🏆 Game#${gameId} 最終結果`,
-                    color: winner === 'team1' ? 0x00ff00 : 0xff0000,
+                    color: teamSide === 'team1' ? 0x00ff00 : 0xff0000,
                     fields: [
                         { name: 'Team 1', value: teams.team1.map(m => m.toString()).join('\n'), inline: true },
                         { name: 'Team 2', value: teams.team2.map(m => m.toString()).join('\n'), inline: true },
-                        { name: '勝者', value: winner === 'team1' ? 'Team 1' : 'Team 2', inline: false },
+                        { name: '勝者', value: teamSide === 'team1' ? 'Team 1' : 'Team 2', inline: false },
                         { name: '終了時刻', value: new Date().toLocaleTimeString('ja-JP'), inline: false }
                     ],
                     timestamp: new Date(),
                 }]
             });
         }
-        
         gameData.delete(gameId);
-        console.log(`✅ Game#${gameId} の処理が完了しました`);
+    }
+
+    // Voidボタン
+    if (interaction.customId.startsWith('void_game_')) {
+        const gameId = interaction.customId.replace('void_game_', '');
+        await interaction.deferUpdate();
+        const channels = guild.channels.cache.filter(c => c.name.includes(`Game#${gameId}`) || c.name.includes(`game-${gameId}`));
+        for (const [id, ch] of channels) await ch.delete().catch(console.error);
+        const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+        if (logChannel) {
+            await logChannel.send({
+                embeds: [{ title: `🚫 Game#${gameId} は無効化（Void）されました`, color: 0x808080, timestamp: new Date() }]
+            });
+        }
+        gameData.delete(gameId);
     }
 });
 
@@ -114,26 +110,11 @@ async function createVoiceChannels(guild, gameId) {
 
 async function createTextChannel(guild, gameId, members) {
     const permissionOverwrites = [
-        {
-            id: guild.id,
-            deny: [PermissionsBitField.Flags.ViewChannel],
-        },
-        ...members.map(m => ({
-            id: m.id,
-            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-        })),
-        {
-            id: guild.client.user.id,
-            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ManageChannels],
-        }
+        { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        ...members.map(m => ({ id: m.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] })),
+        { id: guild.client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ManageChannels] }
     ];
-
-    return await guild.channels.create({
-        name: `game-${gameId}`,
-        type: ChannelType.GuildText,
-        parent: TEXT_CATEGORY_ID,
-        permissionOverwrites: permissionOverwrites,
-    });
+    return await guild.channels.create({ name: `game-${gameId}`, type: ChannelType.GuildText, parent: TEXT_CATEGORY_ID, permissionOverwrites });
 }
 
 async function moveMembers(members, v1, v2) {
@@ -148,7 +129,8 @@ async function moveMembers(members, v1, v2) {
 async function notifyTeamSetup(channel, gameId, teams) {
     const format = (list) => list.map(m => m.toString()).join('\n');
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`delete_game_${gameId}`).setLabel('ゲームを終了').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`delete_game_${gameId}`).setLabel('ゲームを終了').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`void_game_${gameId}`).setLabel('Void').setStyle(ButtonStyle.Secondary)
     );
     await channel.send({
         embeds: [{
